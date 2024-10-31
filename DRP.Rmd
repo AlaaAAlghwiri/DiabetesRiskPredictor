@@ -1,0 +1,106 @@
+---
+title: "Diabetes Risk Prediction"
+author: "Alaa Alghwiri, Mehdi Eskandarisani"
+output: 
+  html_document:
+    embed-resources: true
+    code-fold: false
+    toc: true
+    toc-depth: 3
+    toc-title: Table of Contents
+    toc-location: left
+    smooth-scroll: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+easypackages::libraries("caret", "tidyverse", "here", "readxl", "gtsummary")
+# Read in the data
+# df_balanced <- read.csv(here("data_source/diabetes_binary_5050split_health_indicators_BRFSS2015.csv"))
+# 
+# diabetes_012_health_indicators_BRFSS2015 <- read_csv("data_source/diabetes_012_health_indicators_BRFSS2015.csv")
+
+df <- read_csv("data_source/diabetes_binary_health_indicators_BRFSS2015.csv")
+```
+
+## Exploratory Data Analysis (EDA)
+
+### Missing values check
+```{r, missing values check}
+missing <- map(df, ~sum(is.na(.)))
+
+missing <- tibble(variable = names(df), missing = missing) %>%
+  filter(missing > 0) %>%
+  arrange(desc(missing)) 
+
+print("there are no missing values across the dataset")
+```
+
+### Data types correction
+```{r, correct data types}
+df <- df |>
+  mutate(HighBP = ifelse(HighBP == 1, "High BP", "No High BP"),
+         CholCheck = ifelse(CholCheck == 1, "Chol Check in 5 yrs", "No Chol Check in 5 yrs"),
+         HighChol = ifelse(HighChol == 1, "High Chol", "No High Chol"),
+         Smoker = ifelse(Smoker == 1, "Smoker", "Non-Smoker"),
+         Stroke = ifelse(Stroke == 1, "Stroke", "No Stroke"),
+         HeartDiseaseorAttack = ifelse(HeartDiseaseorAttack == 1, "Heart Disease", "No Heart Disease"),
+         PhysActivity = ifelse(PhysActivity == 1, "Physically Active", "Not Physically Active"),
+         Fruits = ifelse(Fruits == 1, "Fruits", "No Fruits"),
+         Veggies = ifelse(Veggies == 1, "Veggies", "No Veggies"),
+         HvyAlcoholConsump = ifelse(HvyAlcoholConsump == 1, "Heavy Alcohol Consumption", "No Heavy Alcohol Consumption"),
+         AnyHealthcare = ifelse(AnyHealthcare == 1, "Have Healthcare Insurance", "No Healthcare Insurance"),
+         NoDocbcCost = ifelse(NoDocbcCost == 1, "No Doc bc Cost", "Afford Healthcare"),
+         GenHlth = ifelse(GenHlth == 1, "Excellent",
+                          ifelse(GenHlth == 2, "Very Good",
+                                 ifelse(GenHlth == 3, "Good",
+                                        ifelse(GenHlth == 4, "Fair", "Poor")))),
+         DiffWalk = ifelse(DiffWalk == 1, "Difficulty Walking", "No Difficulty Walking"),
+         Sex = ifelse(Sex ==1, "Male", "Female"),
+         Education = ifelse(Education == 1, "Never attended school",
+                            ifelse(Education == 2, "Elementary school",
+                                   ifelse(Education == 3, "High school",
+                                          ifelse(Education == 4, "High school graduate",
+                                                 ifelse(Education == 5, "Some college or technical school",
+                                                        "College graduate"))))),
+         Income = ifelse(Income == 1, "Less than 10000",
+                         ifelse(Income == 2, "10000-14999",
+                                ifelse(Income == 3, "15000-19999",
+                                       ifelse(Income == 4, "20000-24999",
+                                              ifelse(Income == 5, "25000-34999",
+                                                     ifelse(Income == 6, "35000-49999",
+                                                            ifelse(Income == 7, "50000-74999", "75000 or more"))))))),
+         Diabetes_binary = ifelse(Diabetes_binary == 1, "Diabetes", "No Diabetes"))
+
+df <- df |> 
+  mutate(across(where(is.character), as.factor))
+```
+
+### Summary table
+```{r}
+df |>
+  tbl_summary(by = Diabetes_binary,
+        statistic = list(all_continuous() ~ "{mean} ({sd})",
+                         all_categorical() ~ "{n} ({p}%)"),
+        digits = all_continuous() ~ 1,
+        missing_text = "(Missing)"
+    ) |>
+  add_p() %>%
+  modify_header(label = "**Variable**") %>%
+  bold_labels()
+```
+
+### Correlation plot between numeric covariates
+```{r}
+library(corrplot)
+
+corrplot::corrplot(cor(df %>% 
+                         select(where(is.numeric))), method = "number", type = "upper", 
+                   tl.col = "black", cex.lab = 0.7, number.cex = 0.6)
+```
+
+
+
