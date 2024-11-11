@@ -80,6 +80,21 @@ df <- df |>
 ```
 
 ### Summary table
+
+#### General Summary Table
+```{r}
+df |>
+  tbl_summary(
+        statistic = list(all_continuous() ~ "{mean} ({sd})",
+                         all_categorical() ~ "{n} ({p}%)"),
+        digits = all_continuous() ~ 1,
+        missing_text = "(Missing)"
+    ) |>
+  modify_header(label = "**Variable**") %>%
+  bold_labels()
+```
+
+#### Summary Table by Diabetes Status
 ```{r}
 df |>
   tbl_summary(by = Diabetes_binary,
@@ -102,5 +117,48 @@ corrplot::corrplot(cor(df %>%
                    tl.col = "black", cex.lab = 0.7, number.cex = 0.6)
 ```
 
+### Down sample the data due to class-imbalance
+```{r}
+downsampled_data <- downSample(x = df |> select(- Diabetes_binary),
+                               y = df$Diabetes_binary)
 
+df <- downsampled_data
+```
 
+### Summary table (Balanced Class)
+
+#### General Summary Table
+```{r}
+df |>
+  tbl_summary(
+        statistic = list(all_continuous() ~ "{mean} ({sd})",
+                         all_categorical() ~ "{n} ({p}%)"),
+        digits = all_continuous() ~ 1,
+        missing_text = "(Missing)"
+    ) |>
+  modify_header(label = "**Variable**") %>%
+  bold_labels()
+```
+
+#### Summary Table by Diabetes Status
+```{r}
+df |>
+  tbl_summary(by = Class,
+        statistic = list(all_continuous() ~ "{mean} ({sd})",
+                         all_categorical() ~ "{n} ({p}%)"),
+        digits = all_continuous() ~ 1,
+        missing_text = "(Missing)"
+    ) |>
+  add_p() %>%
+  modify_header(label = "**Variable**") %>%
+  bold_labels()
+```
+
+### Correlation plot between numeric covariates
+```{r}
+library(corrplot)
+
+corrplot::corrplot(cor(df %>% 
+                         select(where(is.numeric))), method = "number", type = "upper", 
+                   tl.col = "black", cex.lab = 0.7, number.cex = 0.6)
+```
