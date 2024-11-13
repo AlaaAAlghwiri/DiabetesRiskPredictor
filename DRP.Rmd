@@ -162,3 +162,66 @@ corrplot::corrplot(cor(df %>%
                          select(where(is.numeric))), method = "number", type = "upper", 
                    tl.col = "black", cex.lab = 0.7, number.cex = 0.6)
 ```
+
+## Model Building
+
+### Split the data into training and testing sets
+
+```{r}
+set.seed(123)
+trainIndex <- createDataPartition(df$Class, p = .7, 
+                                  list = FALSE, 
+                                  times = 1)
+
+df_train <- df[ trainIndex,]
+df_test  <- df[-trainIndex,]
+```
+
+
+### Model 1: Logistic Regression
+
+
+
+
+
+### Model 2: K-nearest Neighbors (KNN)
+
+
+
+### Model 3: LDA
+
+
+
+### Model 4: QLDA
+
+
+
+### Model 5: Random Forest
+
+
+### Model 6: XGBoost
+
+
+
+### Model 7: SVM
+
+
+
+
+
+### Model 8: Neural Network
+
+
+
+### Model 9: Lasso Regression
+
+
+### Model 10: Ridge Regression
+
+
+
+### Model 11: Elastic Net
+
+
+
+
