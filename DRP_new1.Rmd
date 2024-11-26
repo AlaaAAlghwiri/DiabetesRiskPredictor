@@ -1,0 +1,450 @@
+---
+title: "Diabetes Risk Prediction"
+author: "Alaa Alghwiri, Mehdi Eskandarisani"
+output: 
+  html_document:
+    embed-resources: true
+    code-fold: false
+    toc: true
+    toc-depth: 3
+    toc-title: Table of Contents
+    toc-location: left
+    smooth-scroll: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+easypackages::libraries("caret", "tidyverse", "here", "readxl", "gtsummary")
+# Read in the data
+# df_balanced <- read.csv(here("data_source/diabetes_binary_5050split_health_indicators_BRFSS2015.csv"))
+# 
+# diabetes_012_health_indicators_BRFSS2015 <- read_csv("data_source/diabetes_012_health_indicators_BRFSS2015.csv")
+
+df <- read_csv("C:/Users/mahdi/Downloads/diabetes_binary_health_indicators_BRFSS2015.csv")
+```
+
+
+## Exploratory Data Analysis (EDA)
+
+### Missing values check
+```{r, missing values check}
+missing <- map(df, ~sum(is.na(.)))
+
+missing <- tibble(variable = names(df), missing = missing) %>%
+  filter(missing > 0) %>%
+  arrange(desc(missing)) 
+
+print("there are no missing values across the dataset")
+```
+
+### Data types correction
+```{r, correct data types}
+df <- df |>
+  mutate(HighBP = ifelse(HighBP == 1, "High BP", "No High BP"),
+         CholCheck = ifelse(CholCheck == 1, "Chol Check in 5 yrs", "No Chol Check in 5 yrs"),
+         HighChol = ifelse(HighChol == 1, "High Chol", "No High Chol"),
+         Smoker = ifelse(Smoker == 1, "Smoker", "Non-Smoker"),
+         Stroke = ifelse(Stroke == 1, "Stroke", "No Stroke"),
+         HeartDiseaseorAttack = ifelse(HeartDiseaseorAttack == 1, "Heart Disease", "No Heart Disease"),
+         PhysActivity = ifelse(PhysActivity == 1, "Physically Active", "Not Physically Active"),
+         Fruits = ifelse(Fruits == 1, "Fruits", "No Fruits"),
+         Veggies = ifelse(Veggies == 1, "Veggies", "No Veggies"),
+         HvyAlcoholConsump = ifelse(HvyAlcoholConsump == 1, "Heavy Alcohol Consumption", "No Heavy Alcohol Consumption"),
+         AnyHealthcare = ifelse(AnyHealthcare == 1, "Have Healthcare Insurance", "No Healthcare Insurance"),
+         NoDocbcCost = ifelse(NoDocbcCost == 1, "No Doc bc Cost", "Afford Healthcare"),
+         GenHlth = ifelse(GenHlth == 1, "Excellent",
+                          ifelse(GenHlth == 2, "Very Good",
+                                 ifelse(GenHlth == 3, "Good",
+                                        ifelse(GenHlth == 4, "Fair", "Poor")))),
+         DiffWalk = ifelse(DiffWalk == 1, "Difficulty Walking", "No Difficulty Walking"),
+         Sex = ifelse(Sex ==1, "Male", "Female"),
+         Education = ifelse(Education == 1, "Never attended school",
+                            ifelse(Education == 2, "Elementary school",
+                                   ifelse(Education == 3, "High school",
+                                          ifelse(Education == 4, "High school graduate",
+                                                 ifelse(Education == 5, "Some college or technical school",
+                                                        "College graduate"))))),
+         Income = ifelse(Income == 1, "Less than 10000",
+                         ifelse(Income == 2, "10000-14999",
+                                ifelse(Income == 3, "15000-19999",
+                                       ifelse(Income == 4, "20000-24999",
+                                              ifelse(Income == 5, "25000-34999",
+                                                     ifelse(Income == 6, "35000-49999",
+                                                            ifelse(Income == 7, "50000-74999", "75000 or more"))))))),
+         Diabetes_binary = ifelse(Diabetes_binary == 1, "Diabetes", "No Diabetes"))
+
+df <- df |> 
+  mutate(across(where(is.character), as.factor))
+```
+
+### Summary table
+
+#### General Summary Table
+```{r}
+#install.packages("gtsummary")
+
+df |>
+  tbl_summary(
+        statistic = list(all_continuous() ~ "{mean} ({sd})",
+                         all_categorical() ~ "{n} ({p}%)"),
+        digits = all_continuous() ~ 1,
+        missing_text = "(Missing)"
+    ) |>
+  modify_header(label = "**Variable**") 
+ # bold_labels()
+```
+
+#### Summary Table by Diabetes Status
+```{r}
+df |>
+  tbl_summary(by = Diabetes_binary,
+        statistic = list(all_continuous() ~ "{mean} ({sd})",
+                         all_categorical() ~ "{n} ({p}%)"),
+        digits = all_continuous() ~ 1,
+        missing_text = "(Missing)"
+    ) |>
+  add_p() %>%
+  modify_header(label = "**Variable**") 
+  #bold_labels()
+```
+
+### Correlation plot between numeric covariates
+```{r}
+library(corrplot)
+
+corrplot::corrplot(cor(df %>% 
+                         select(where(is.numeric))), method = "number", type = "upper", 
+                   tl.col = "black", cex.lab = 0.7, number.cex = 0.6)
+```
+
+### Down sample the data due to class-imbalance
+```{r}
+downsampled_data <- downSample(x = df |> select(- Diabetes_binary),
+                               y = df$Diabetes_binary)
+
+df <- downsampled_data
+```
+
+### Summary table (Balanced Class)
+
+#### General Summary Table
+```{r}
+df |>
+  tbl_summary(
+        statistic = list(all_continuous() ~ "{mean} ({sd})",
+                         all_categorical() ~ "{n} ({p}%)"),
+        digits = all_continuous() ~ 1,
+        missing_text = "(Missing)"
+    ) |>
+  modify_header(label = "**Variable**") %>%
+  bold_labels()
+```
+
+#### Summary Table by Diabetes Status
+```{r}
+df |>
+  tbl_summary(by = Class,
+        statistic = list(all_continuous() ~ "{mean} ({sd})",
+                         all_categorical() ~ "{n} ({p}%)"),
+        digits = all_continuous() ~ 1,
+        missing_text = "(Missing)"
+    ) |>
+  add_p() %>%
+  modify_header(label = "**Variable**") 
+  #bold_labels()
+```
+
+### Correlation plot between numeric covariates
+```{r}
+library(corrplot)
+
+corrplot::corrplot(cor(df %>% 
+                         select(where(is.numeric))), method = "number", type = "upper", 
+                   tl.col = "black", cex.lab = 0.7, number.cex = 0.6)
+```
+
+## Model Building
+
+### Logistic Regression Model
+
+```{r}
+
+
+
+library(caret)
+library(pROC)
+library(ggplot2)
+
+# Split the dataset into training and testing sets
+set.seed(123) 
+train_index <- createDataPartition(df$Class, p = 0.7, list = FALSE)
+train_data <- df[train_index, ]
+test_data <- df[-train_index, ]
+
+
+logistic_model <- glm(Class ~ ., data = train_data, family = binomial)
+
+predicted_probs <- predict(logistic_model, test_data, type = "response")
+
+predicted_class <- ifelse(predicted_probs > 0.5, "Diabetes", "No Diabetes")
+
+conf_matrix <- confusionMatrix(as.factor(predicted_class), as.factor(test_data$Class))
+print(conf_matrix)
+
+
+roc_curve <- roc(test_data$Class, predicted_probs, levels = c("No Diabetes", "Diabetes"))
+
+# Plot ROC Curve
+plot(roc_curve, col = "blue", main = "ROC Curve")
+auc_value <- auc(roc_curve)
+#legend("bottomright", legend = paste("AUC =", round(auc_value, 3)), box.lty = 0, text.col = "blue")
+
+
+# Sensitivity-Specificity plot
+sens_spec_data <- coords(roc_curve, x = "all", ret = c("sensitivity", "specificity"), transpose = FALSE)
+ggplot(data = sens_spec_data, aes(x = specificity, y = sensitivity)) +
+  geom_line(color = "red") +
+  labs(title = "Sensitivity-Specificity Plot", x = "Specificity", y = "Sensitivity") +
+  theme_minimal()
+
+
+```
+
+
+
+### Model 2: K-nearest Neighbors (KNN)
+```{r}
+library(class)
+
+# Normalize function for numeric columns
+normalize <- function(x) {
+  range <- max(x, na.rm = TRUE) - min(x, na.rm = TRUE)
+  if (range == 0) {
+    return(rep(0, length(x)))  
+  } else {
+    return((x - min(x, na.rm = TRUE)) / range)
+  }
+}
+
+# Separate numeric and non-numeric columns and Apply normalization to numeric columns only
+numeric_cols <- sapply(train_data, is.numeric)
+
+train_data_norm <- train_data
+test_data_norm <- test_data
+train_data_norm[numeric_cols] <- lapply(train_data[numeric_cols], normalize)
+test_data_norm[numeric_cols] <- lapply(test_data[numeric_cols], normalize)
+
+
+train_data_norm <- train_data_norm %>%
+  mutate(across(where(is.character), as.factor))
+test_data_norm <- test_data_norm %>%
+  mutate(across(where(is.character), as.factor))
+
+#  missing data check
+if (any(is.na(train_data_norm)) || any(is.infinite(as.matrix(train_data_norm[numeric_cols])))) {
+  stop("NA or Inf values detected in training data after normalization.")
+}
+if (any(is.na(test_data_norm)) || any(is.infinite(as.matrix(test_data_norm[numeric_cols])))) {
+  stop("NA or Inf values detected in test data after normalization.")
+}
+
+# Define predictor and response variables
+x_train <- train_data_norm[, -which(names(train_data_norm) == "Class")]
+y_train <- train_data_norm$Class
+x_test <- test_data_norm[, -which(names(test_data_norm) == "Class")]
+y_test <- test_data_norm$Class
+
+s
+x_train <- as.matrix(x_train[numeric_cols])
+x_test <- as.matrix(x_test[numeric_cols])
+
+# Fit the KNN model
+set.seed(123)  
+k <- 5  
+predicted_class_knn <- knn(train = x_train, test = x_test, cl = y_train, k = k, prob = TRUE)
+
+predicted_probs_knn <- attr(predicted_class_knn, "prob")
+predicted_class_knn <- factor(predicted_class_knn, levels = levels(y_test))
+conf_matrix_knn <- confusionMatrix(predicted_class_knn, y_test)
+print(conf_matrix_knn)
+
+# Plot ROC Curve
+roc_curve_knn <- roc(y_test, as.numeric(predicted_probs_knn), levels = c("No Diabetes", "Diabetes"))
+
+# Plot ROC
+plot(roc_curve_knn, col = "green", main = "ROC Curve (KNN)")
+auc_value_knn <- auc(roc_curve_knn)
+#legend("bottomright", legend = paste("AUC =", round(auc_value_knn, 3)), box.lty = 0, text.col = "green")
+
+# Sensitivity-Specificity Plot
+sens_spec_data_knn <- coords(roc_curve_knn, x = "all", ret = c("sensitivity", "specificity"), transpose = FALSE)
+ggplot(data = sens_spec_data_knn, aes(x = specificity, y = sensitivity)) +
+  geom_line(color = "darkgreen") +
+  labs(title = "Sensitivity-Specificity Plot (KNN)", x = "Specificity", y = "Sensitivity") +
+  theme_minimal()
+
+
+```
+
+### Model 3: LDA
+
+
+
+### Model 4: QLDA
+```{r}
+
+library(MASS)
+library(pROC) 
+library(ggplot2)
+
+# Split the dataset into training and testing sets
+set.seed(123)  
+train_index <- createDataPartition(df$Class, p = 0.7, list = FALSE)
+train_data <- df[train_index, ]
+test_data <- df[-train_index, ]
+
+# Fit QDA model
+qda_model <- qda(Class ~ ., data = train_data)
+
+# Make predictions on the test set
+qda_predictions <- predict(qda_model, test_data)
+qda_class_predictions <- qda_predictions$class  
+qda_probabilities <- qda_predictions$posterior[, 2]  
+
+conf_matrix_qda <- confusionMatrix(as.factor(qda_class_predictions), as.factor(test_data$Class))
+print(conf_matrix_qda)
+
+roc_curve_qda <- roc(test_data$Class, qda_probabilities, levels = c("No Diabetes", "Diabetes"))
+
+# Plot ROC
+plot(roc_curve_qda, col = "purple", main = "ROC Curve (QDA)")
+auc_value_qda <- auc(roc_curve_qda)
+legend("bottomright", legend = paste("AUC =", round(auc_value_qda, 3)), box.lty = 0, text.col = "purple")
+
+# Sensitivity-Specificity Plot
+sens_spec_data_qda <- coords(roc_curve_qda, x = "all", ret = c("sensitivity", "specificity"), transpose = FALSE)
+# Sensitivity-Specificity Plot
+ggplot(data = sens_spec_data_qda, aes(x = specificity, y = sensitivity)) +
+  geom_line(color = "purple") +  
+  labs(title = "Sensitivity-Specificity Plot (QDA)", x = "Specificity", y = "Sensitivity") +
+  theme_minimal()
+
+
+
+```
+
+
+### Model 5: Random Forest
+
+
+### Model 6: XGBoost
+
+
+
+### Model 7: SVM_New
+
+
+```{r}
+
+library(e1071)  
+library(kernlab)  
+library(pROC)  
+library(ggplot2)  
+library(caret)  
+
+# Prepare the data for SVM
+x_train <- model.matrix(Class ~ ., data = train_data)[, -1]  
+y_train <- as.factor(train_data$Class)  
+
+x_test <- model.matrix(Class ~ ., data = test_data)[, -1]
+y_test <- as.factor(test_data$Class)
+
+# Train the SVM model using kernlab
+set.seed(123)  
+svm_model <- ksvm(x = x_train, y = y_train, kernel = "rbfdot", prob.model = TRUE)
+
+svm_predictions <- predict(svm_model, x_test, type = "probabilities")
+svm_probs <- svm_predictions[, 2]  
+
+svm_class_predictions <- predict(svm_model, x_test)
+
+svm_class_predictions <- as.factor(as.character(svm_class_predictions))
+
+conf_matrix_svm <- confusionMatrix(svm_class_predictions, y_test)
+print(conf_matrix_svm)
+
+roc_curve_svm <- roc(y_test, svm_probs, levels = c("No Diabetes", "Diabetes"))
+
+plot(roc_curve_svm, col = "red", main = "ROC Curve (SVM)")
+auc_value_svm <- auc(roc_curve_svm)
+#legend("bottomright", legend = paste("AUC =", round(auc_value_svm, 3)), box.lty = 0, text.col = "red")
+
+# Sensitivity-Specificity Plot
+sens_spec_data_svm <- coords(roc_curve_svm, x = "all", ret = c("sensitivity", "specificity"), transpose = FALSE)
+ggplot(data = sens_spec_data_svm, aes(x = specificity, y = sensitivity)) +
+  geom_line(color = "red") +
+  labs(title = "Sensitivity-Specificity Plot (SVM)", x = "Specificity", y = "Sensitivity") +
+  theme_minimal()
+```
+
+
+### Model 8: Neural Network
+
+
+
+### Model 9: Lasso Regression
+
+
+### Model 10: Ridge Regression
+```{r}
+library(glmnet)
+library(pROC)
+library(ggplot2)
+
+# Prepare the data for Ridge Regression
+x_train <- model.matrix(Class ~ ., data = train_data)[, -1] 
+y_train <- ifelse(train_data$Class == "Diabetes", 1, 0)  
+
+x_test <- model.matrix(Class ~ ., data = test_data)[, -1]
+y_test <- ifelse(test_data$Class == "Diabetes", 1, 0)
+
+# Fit Ridge Regression model (alpha = 0 for Ridge Regression)
+set.seed(123)  # For reproducibility
+ridge_model <- glmnet(x_train, y_train, alpha = 0, family = "binomial")
+
+# Cross-validate to find optimal lambda
+set.seed(123)
+cv_ridge <- cv.glmnet(x_train, y_train, alpha = 0, family = "binomial")
+best_lambda <- cv_ridge$lambda.min
+
+# Refit the model with the optimal lambda
+ridge_final <- glmnet(x_train, y_train, alpha = 0, lambda = best_lambda, family = "binomial")
+predicted_probs_ridge <- predict(ridge_final, newx = x_test, type = "response")
+predicted_class_ridge <- ifelse(predicted_probs_ridge > 0.5, "Diabetes", "No Diabetes")
+conf_matrix_ridge <- confusionMatrix(as.factor(predicted_class_ridge), as.factor(ifelse(y_test == 1, "Diabetes", "No Diabetes")))
+print(conf_matrix_ridge)
+
+roc_curve_ridge <- roc(ifelse(y_test == 1, "Diabetes", "No Diabetes"), predicted_probs_ridge)
+
+# Plot ROC
+plot(roc_curve_ridge, col = "blue", main = "ROC Curve (Ridge Regression)")
+auc_value_ridge <- auc(roc_curve_ridge)
+#legend("bottomright", legend = paste("AUC =", round(auc_value_ridge, 3)), box.lty = 0, text.col = "blue")
+
+# Sensitivity-Specificity Plot
+sens_spec_data_ridge <- coords(roc_curve_ridge, x = "all", ret = c("sensitivity", "specificity"), transpose = FALSE)
+ggplot(data = sens_spec_data_ridge, aes(x = specificity, y = sensitivity)) +
+  geom_line(color = "blue") +
+  labs(title = "Sensitivity-Specificity Plot (Ridge Regression)", x = "Specificity", y = "Sensitivity") +
+  theme_minimal()
+
+```
+
+### Model 11: Elastic Net
+
+
+
+
