@@ -146,7 +146,7 @@ df |>
 
 #### Summary Table by Diabetes Status
 ```{r, cache=TRUE}
-df |>
+summary_table <- df |>
   tbl_summary(by = Class,
         statistic = list(all_continuous() ~ "{mean} ({sd})",
                          all_categorical() ~ "{n} ({p}%)"),
@@ -580,7 +580,7 @@ legend("bottomright", legend = paste0(modelNames, ": ", round(auc,3)),
 library(ggplot2)
 
 # Extract variable importance
-importance_rf <- varImp(model.rf.finetuned)
+importance_rf <- varImp(model.rf.tuned)
 importance_df <- as.data.frame(importance_rf$importance)
 importance_df$Feature <- rownames(importance_df)
 importance_df <- importance_df[order(importance_df$Overall, decreasing = TRUE), ]  # Sort by importance
@@ -608,7 +608,7 @@ ggplot(importance_df, aes(x = reorder(Feature, Overall), y = Overall)) +
 library(broom)
 library(glue)
 # Extract the coefficients from the final model
-model.glm$finalModel |> 
+odds_summary <- model.glm$finalModel |> 
   tidy(conf.int = T) |> 
   filter(term != "(Intercept)",
          p.value <=0.05) |> 
@@ -618,6 +618,7 @@ model.glm$finalModel |>
   mutate(`estimate (conf.low, conf.high)`= glue::glue('{estimate} ({conf.low}, {conf.high})')) |>
   select(term, `estimate (conf.low, conf.high)`, odds_ratio, `1/odds_ratio`)
   
+print(odds_summary)
 ```
 
 
