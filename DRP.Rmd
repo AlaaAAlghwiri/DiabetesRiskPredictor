@@ -1,19 +1,15 @@
 ---
 title: "Diabetes Risk Prediction"
-author: "Alaa Alghwiri, Mehdi Eskandarisani"
+author: "Team: 5"
 output: 
-  html_document:
-    embed-resources: true
-    code-fold: false
-    toc: true
-    toc-depth: 3
-    toc-title: Table of Contents
-    toc-location: left
-    smooth-scroll: true
+  flexdashboard::flex_dashboard:
+    orientation: columns
+    vertical_layout: fill
+    theme: spacelab
 ---
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(echo = FALSE)
 ```
 
 ```{r}
@@ -28,9 +24,23 @@ easypackages::libraries("caret", "tidyverse", "here", "readxl",
 df <- read_csv("data_source/diabetes_binary_health_indicators_BRFSS2015.csv")
 ```
 
-## Exploratory Data Analysis (EDA)
+# Exploratory Data Analysis (EDA)
 
-### Missing values check
+## {.tabset .tabset-fade .tabset-pills}
+
+### Data Overview
+
+- The data set contains 21 covariates and 253680 cases.
+  - 3 numeric covariates.
+  - 18 categorical covariates.
+
+- There is no missing, duplicated, or extreme values in the data set.
+
+- Binary outcome (Diabetes/No diabetes), Classification 
+  - Number of those with diabetes = 35,346 , Proportion (Diabetes) = 14 %
+  - Imbalanced class -> Down sampling was applied and now (35,346 each)
+
+
 ```{r, missing values check}
 missing <- map(df, ~sum(is.na(.)))
 
@@ -38,10 +48,10 @@ missing <- tibble(variable = names(df), missing = missing) %>%
   filter(missing > 0) %>%
   arrange(desc(missing)) 
 
-print("there are no missing values across the dataset")
+#print("there are no missing values across the dataset")
 ```
 
-### Data types correction
+
 ```{r, correct data types}
 df <- df |>
   mutate(HighBP = ifelse(HighBP == 1, "High BP", "No High BP"),
@@ -83,53 +93,15 @@ df <- df |>
 df$Age <- as.factor(df$Age)
 ```
 
-### Summary table
 
-#### General Summary Table
-```{r, cache=TRUE}
-df |>
-  tbl_summary(
-        statistic = list(all_continuous() ~ "{mean} ({sd})",
-                         all_categorical() ~ "{n} ({p}%)"),
-        digits = all_continuous() ~ 1,
-        missing_text = "(Missing)"
-    ) |>
-  modify_header(label = "**Variable**") %>%
-  bold_labels()
-```
-
-#### Summary Table by Diabetes Status
-```{r, cache=TRUE}
-df |>
-  tbl_summary(by = Diabetes_binary,
-        statistic = list(all_continuous() ~ "{mean} ({sd})",
-                         all_categorical() ~ "{n} ({p}%)"),
-        digits = all_continuous() ~ 1,
-        missing_text = "(Missing)"
-    ) |>
-  add_p() %>%
-  modify_header(label = "**Variable**") %>%
-  bold_labels()
-```
-
-### Correlation plot between numeric covariates
-```{r, cache=TRUE}
-library(corrplot)
-
-corrplot::corrplot(cor(df %>% 
-                         select(where(is.numeric))), method = "number", type = "upper", 
-                   tl.col = "black", cex.lab = 0.7, number.cex = 0.6)
-```
-
-### Down sample the data due to class-imbalance
-```{r}
+```{r, Down sample the data due to class-imbalance}
 downsampled_data <- downSample(x = df |> select(- Diabetes_binary),
                                y = df$Diabetes_binary)
 
 df <- downsampled_data
 ```
 
-### Summary table (Balanced Class)
+### Summary table (Balanced Class) and variable selection
 
 #### General Summary Table
 ```{r, cache=TRUE}
@@ -144,9 +116,11 @@ df |>
   bold_labels()
 ```
 
+### Summary Table by Diabetes Status
+
 #### Summary Table by Diabetes Status
 ```{r, cache=TRUE}
-summary_table <- df |>
+df |>
   tbl_summary(by = Class,
         statistic = list(all_continuous() ~ "{mean} ({sd})",
                          all_categorical() ~ "{n} ({p}%)"),
@@ -167,11 +141,15 @@ corrplot::corrplot(cor(df %>%
                    tl.col = "black", cex.lab = 0.7, number.cex = 0.6)
 ```
 
-## Model Building
+# Model Building
 
-### Split the data into training and testing sets
+## {.tabset .tabset-fade .tabset-pills}
 
-```{r}
+### Prepare the data for model building
+
+- Split the data into training (count = 49,486; proportion = 70 %) and testing (count = 21,206; proportion = 30 %) sets.
+
+```{r, Split the data into training and testing sets}
 
 df$Class <- as.factor(df$Class)
 levels(df$Class) <- c("pos", "neg")
@@ -199,8 +177,8 @@ ordinal_cols <- c("GenHlth", "Education", "Income", "Age") # 4
 num_cols <- c("BMI", "MentHlth", "PhysHlth") # 3
 ```
 
-### Prep data for machine learning models
-```{r}
+
+```{r, Prep data for machine learning models}
 # prep binary columns
 
 # One-hot encode categorical variables
@@ -225,6 +203,8 @@ X_test_binary <- as.data.frame(X_test_binary_encoded) |>
          -`AnyHealthcare: No Healthcare Insurance`, -`NoDocbcCost: No Doc bc Cost`, 
          -`DiffWalk: No Difficulty Walking`, - `Sex: Female`)
 ```
+
+- Convert categorical covariates to dummy variables and ordinal covariates to numeric.
 
 ```{r}
 # For ordinal variables
@@ -273,9 +253,7 @@ ctrl <- trainControl(method = "repeatedcv", #resampling method
 ```
 
 
-### Model 1: Logistic Regression
-
-```{r}
+```{r, Logistic Regression}
 set.seed(123)
 model.glm <- train(x = X_train,
              y = y_train,
@@ -286,8 +264,7 @@ final.glm <- model.glm$finalModel
 ```
 
 
-### Model 2: K-nearest Neighbors (KNN)
-```{r}
+```{r, K-nearest Neighbors (KNN)}
 set.seed(1)
 
 # Define the tuning grid for k
@@ -310,10 +287,7 @@ model.knn <- read_rds("model_knn_cv.rds")
 
 ```
 
-
-### Model 3: LDA
-
-```{r}
+```{r, LDA}
 set.seed(1)
 model.lda <- train(x = X_train,
                    y = y_train,
@@ -323,8 +297,7 @@ model.lda <- train(x = X_train,
 ```
 
 
-### Model 4: QLDA
-```{r}
+```{r, QLDA}
 set.seed(1)
 model.qda <- train(x = X_train,
                    y = y_train,
@@ -332,26 +305,9 @@ model.qda <- train(x = X_train,
                    metric = "ROC",
                    trControl = ctrl)
 ```
-### Naive Bayes
+ 
 
-```{r, warning=FALSE}
-# set.seed(1)
-# nbGrid <- expand.grid(usekernel = c(FALSE,TRUE), #allows us to use a kernel density estimate for continuous variables versus a guassian density estimate
-#                       fL = 1,  #with Laplace smoother
-#                       adjust = seq(0,5,by = 1)) 
-#                     
-# 
-# model.nb <- train(x = X_train,
-#                   y = y_train,
-#                   method = "nb",
-#                   #tuneGrid = nbGrid,
-#                   metric = "ROC",
-#                   trControl = ctrl)
-```
-
-### Model 5: Random Forest
-
-```{r}
+```{r, Random Forest}
 # Try more if possible
 # rf.grid <- expand.grid(mtry = 1:6,
 #                        splitrule = "gini",
@@ -366,13 +322,9 @@ model.qda <- train(x = X_train,
 
 #saveRDS(model.rf, "model_rf_cv.rds")
 model.rf <- read_rds("model_rf_cv.rds")
-
-ggplot(model.rf, highlight = TRUE)
 ```
 
-### Model 6: AdaBoost
-
-```{r}
+```{r, AdaBoost}
 # gbmA.grid <- expand.grid(n.trees = c(2000,3000,4000),
 #                         interaction.depth = 1:6,
 #                         shrinkage = c(0.001,0.003,0.005),
@@ -390,12 +342,10 @@ ggplot(model.rf, highlight = TRUE)
 
 #saveRDS(model.gbmA, "model_gbmA_cv.rds")
 model.gbmA <- read_rds("model_gbmA_cv.rds")
-ggplot(model.gbmA, highlight = TRUE)
 
 ```
 
-### Model 7: SVM
-```{r}
+```{r, SVM}
 # set.seed(2)
 # model.svm <- train(x = X_train,
 #                    y = y_train,
@@ -405,9 +355,8 @@ ggplot(model.gbmA, highlight = TRUE)
 #                    preProcess = c("center", "scale"))
 ```
 
-### Model 11: Elastic Net
 
-```{r}
+```{r, Elastic Net}
 set.seed(2313)
 model.enet <- train(X_test, y_test,
                   method = "glmnet",
@@ -415,20 +364,29 @@ model.enet <- train(X_test, y_test,
                                          #lambda = exp(seq(-5, 1, length=100))),
                   
                   trControl = ctrl)
-ggplot(model.enet,highlight=T)
+#ggplot(model.enet,highlight=T)
 # plot(enet.fit, xTrans = function(x) log(x))
 
-model.enet$bestTune
+#model.enet$bestTune
 
 # coefficient of the final model
-coef(model.enet$finalModel,model.enet$bestTune$lambda)
+#coef(model.enet$finalModel,model.enet$bestTune$lambda)
 ```
 
+- List of algorithms used in the model building process:
+  
+  - Logistic Regression
+  - K-nearest Neighbors (KNN)
+  - Linear Discriminant Analysis (LDA)
+  - Quadratic Discriminant Analysis (QDA)
+  - Random Forest
+  - AdaBoost
+  - Elastic Net
 
-# Model Evaluation
-## Compare the Cross-validation performance
 
-```{r message=FALSE, warning=FALSE}
+### Cross-validation models' performance
+
+```{r, message=FALSE, warning=FALSE}
 res <- resamples(list(GLM = model.glm, 
                       KNN = model.knn,
                       LDA = model.lda,
@@ -440,7 +398,10 @@ res <- resamples(list(GLM = model.glm,
 #summary(res)
 ```
 
-```{r}
+
+#### Boxplot of the models' performance
+
+```{r, fig.align='center' , fig.width=10, fig.height=6}
 theme1 <- trellis.par.get()
 theme1$plot.symbol$col = rgb(.2, .2, .2, .4)
 theme1$plot.symbol$pch = 16
@@ -450,12 +411,14 @@ trellis.par.set(theme1)
 bwplot(res, layout = c(3, 1))
 ```
 
-```{r}
+#### ROC boxplots
+```{r, fig.align='center' , fig.width=10, fig.height=6}
 bwplot(res, metric = "ROC")
 ```
-## Cross-validation performance 
 
-```{r message=FALSE, warning=FALSE}
+#### ROC curves
+
+```{r message=FALSE, warning=FALSE, fig.align='center' , fig.width=10, fig.height=6}
 # use test data to evaluate the fitted model
 
 glm.pred <- predict(model.glm, newdata = X_train, type = "prob")[,1]
@@ -496,11 +459,11 @@ legend("bottomright", legend = paste0(modelNames, ": ", round(auc,3)),
        col = 1:7, lwd = 2)
 ```
 
-## Model finetuning and evaluation
-In this stage, will pick the best 3 models and will fine-tune them to get the best hyperparameters.
+# Model finetuning and final evaluation
 
-### Random Forest fine-tuning
-```{r}
+In this stage, will pick the best 3 models and will fine-tune them to get the best hyper parameters.
+
+```{r, Random Forest fine-tuning}
 rf.grid <- expand.grid(
   mtry = seq(3, 6, 1),
   splitrule = "gini",
@@ -524,8 +487,8 @@ model.rf.tuned <- read_rds("model.rf.tuned.rds")
 
 ```
 
-### GBM_A fine-tuning
-```{r}
+
+```{r, GBM_A fine-tuning}
 # tuning my ada boost model
 gbmA.grid <- expand.grid(
   n.trees = c(500, 700, 1000),
@@ -547,7 +510,32 @@ model.gbmA.tuned <- read_rds("model.gbmA.tuned.rds")
 ```
 
 
-## Testing set performance
+### Training set performance
+
+```{r message=FALSE, warning=FALSE}
+# use test data to evaluate the fitted model
+
+glm.pred <- predict(final.glm, newdata = X_train, type = "response")
+rf.pred <- predict(model.rf.tuned, newdata = X_train, type = "prob")[,1]
+gbmA.pred <- predict(model.gbmA.tuned, newdata = X_train, type = "prob")[,1]
+
+roc.glm <- roc(y_train, glm.pred)
+roc.rf <- roc(y_train, rf.pred)
+roc.gbmA <- roc(y_train, gbmA.pred)
+
+auc <- c(roc.glm$auc[1], roc.rf$auc[1], roc.gbmA$auc[1])
+
+plot(roc.glm, col = 1, legacy.axes = TRUE, lwd = 1, main = "ROC -- Methods Comparison on The Training Set")
+plot(roc.rf, col = 2, add = TRUE, lwd = 1)
+plot(roc.gbmA, col = 3, add = TRUE, lwd = 1)
+
+modelNames <- c("glm", "rf","gbmA")
+legend("bottomright", legend = paste0(modelNames, ": ", round(auc,3)),
+       col = 1:3, lwd = 2)
+```
+
+
+### Testing set performance
 Now let's look at the test set performance.
 
 ```{r message=FALSE, warning=FALSE}
@@ -575,8 +563,10 @@ legend("bottomright", legend = paste0(modelNames, ": ", round(auc,3)),
 
 # Best model interpretation
 
-## Variable importance using Random Forest
-```{r}
+## {.tabset .tabset-fade .tabset-pills}
+
+### Variable importance using Random Forest
+```{r, fig.align='center' , fig.width=10, fig.height=6}
 library(ggplot2)
 
 # Extract variable importance
@@ -603,12 +593,12 @@ ggplot(importance_df, aes(x = reorder(Feature, Overall), y = Overall)) +
 
 ```
 
-## Odds ratio
+### Odds Ratio
 ```{r}
 library(broom)
 library(glue)
 # Extract the coefficients from the final model
-odds_summary <- model.glm$finalModel |> 
+model.glm$finalModel |> 
   tidy(conf.int = T) |> 
   filter(term != "(Intercept)",
          p.value <=0.05) |> 
@@ -616,11 +606,13 @@ odds_summary <- model.glm$finalModel |>
          `1/odds_ratio` = 1/odds_ratio) |>
   mutate(across(where(is.numeric), ~ round(., 3))) |>
   mutate(`estimate (conf.low, conf.high)`= glue::glue('{estimate} ({conf.low}, {conf.high})')) |>
-  select(term, `estimate (conf.low, conf.high)`, odds_ratio, `1/odds_ratio`)
-  
-print(odds_summary)
+  select(term, `estimate (conf.low, conf.high)`, odds_ratio, `1/odds_ratio`) |>
+  DT::datatable(rownames = FALSE, options = list(pageLength = 10))
 ```
 
 
-
-
+```{css}
+    .chart-shim {
+      overflow: auto;
+    }
+```

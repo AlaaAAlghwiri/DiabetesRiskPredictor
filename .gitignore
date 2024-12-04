@@ -50,4 +50,4 @@ po/*~
 rsconnect/
 
 .DS_Store
-*.html
+DRP_files/
