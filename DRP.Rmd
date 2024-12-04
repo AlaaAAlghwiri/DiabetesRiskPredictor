@@ -24,7 +24,7 @@ easypackages::libraries("caret", "tidyverse", "here", "readxl",
 df <- read_csv("data_source/diabetes_binary_health_indicators_BRFSS2015.csv")
 ```
 
-# Exploratory Data Analysis (EDA)
+# **Exploratory Data Analysis (EDA)**
 
 ## {.tabset .tabset-fade .tabset-pills}
 
@@ -33,9 +33,11 @@ df <- read_csv("data_source/diabetes_binary_health_indicators_BRFSS2015.csv")
 - The data set contains 21 covariates and 253680 cases.
   - 3 numeric covariates.
   - 18 categorical covariates.
-
-- There is no missing, duplicated, or extreme values in the data set.
-
+  
+  
+- There are no missing, duplicated, or extreme values in the data set.
+  
+  
 - Binary outcome (Diabetes/No diabetes), Classification 
   - Number of those with diabetes = 35,346 , Proportion (Diabetes) = 14 %
   - Imbalanced class -> Down sampling was applied and now (35,346 each)
@@ -141,7 +143,7 @@ corrplot::corrplot(cor(df %>%
                    tl.col = "black", cex.lab = 0.7, number.cex = 0.6)
 ```
 
-# Model Building
+# **Model Building**
 
 ## {.tabset .tabset-fade .tabset-pills}
 
@@ -459,7 +461,7 @@ legend("bottomright", legend = paste0(modelNames, ": ", round(auc,3)),
        col = 1:7, lwd = 2)
 ```
 
-# Model finetuning and final evaluation
+# **Model fine-tuning and final evaluation**
 
 In this stage, will pick the best 3 models and will fine-tune them to get the best hyper parameters.
 
@@ -561,7 +563,7 @@ legend("bottomright", legend = paste0(modelNames, ": ", round(auc,3)),
 ```
 
 
-# Best model interpretation
+# **Best model interpretation**
 
 ## {.tabset .tabset-fade .tabset-pills}
 
@@ -615,4 +617,44 @@ model.glm$finalModel |>
     .chart-shim {
       overflow: auto;
     }
+    
+/* Control the overall font size for the body */
+body {
+    font-size: 22px; /* Adjust overall font size */
+    line-height: 1.6; /* Adjust line spacing for better readability */
+}
+
+/* Control font size for headings */
+h1 {
+    font-size: 28px; /* Font size for main headings */
+}
+h2 {
+    font-size: 26px; /* Font size for subheadings */
+}
+h3 {
+    font-size: 24px;
+}
+
+/* Control font size for paragraphs */
+p {
+    font-size: 16px; /* Adjust paragraph font size */
+}
+
+/* Control font size for code blocks */
+pre, code {
+    font-size: 14px; /* Adjust font size for inline and block code */
+    font-family: "Courier New", Courier, monospace; /* Optional: set font family for code */
+}
+
+/* Control font size for lists */
+ul, ol {
+    font-size: 16px;
+}
+
+/* Control font size for block quotes */
+blockquote {
+    font-size: 18px;
+    font-style: italic;
+}
+
 ```
