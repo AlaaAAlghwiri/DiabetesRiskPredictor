@@ -1,0 +1,666 @@
+---
+title: "Diabetes Risk Prediction"
+author: "Team: 5"
+output: 
+  flexdashboard::flex_dashboard:
+    orientation: columns
+    vertical_layout: fill
+    theme: spacelab
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+```
+
+```{r}
+easypackages::libraries("caret", "tidyverse", "here", "readxl", 
+                        "gtsummary", "pROC", "tree",
+                        "randomForest", "gbm", "rpart.plot")
+# Read in the data
+# df_balanced <- read.csv(here("data_source/diabetes_binary_5050split_health_indicators_BRFSS2015.csv"))
+# 
+# diabetes_012_health_indicators_BRFSS2015 <- read_csv("data_source/diabetes_012_health_indicators_BRFSS2015.csv")
+
+df <- read_csv("data_source/diabetes_binary_health_indicators_BRFSS2015.csv")
+```
+
+# **Exploratory Data Analysis (EDA)**
+
+## {.tabset .tabset-fade .tabset-pills}
+
+### Data Overview
+
+
+-Diabetes is among the most prevalent chronic diseases in the United States
+-According to the 2018 report from the U.S. Centers for Disease Control and Prevention, 34.2 million Americans have diabetes, and 88 million have prediabetes.
+-One in five individuals with diabetes and approximately eight in ten individuals with prediabetes are unaware of their condition and associated risks.
+-Diabetes also places a massive burden on the economy, with diagnosed diabetes costs of roughly $327 billion dollars and total costs with undiagnosed diabetes and prediabetes approaching $400 billion dollars annually.
+
+- The data set contains 21 covariates and 253680 cases.
+  - 3 numeric covariates.
+  - 18 categorical covariates.
+  
+  
+- There are no missing, duplicated, or extreme values in the data set.
+  
+  
+- Binary outcome (Diabetes/No diabetes), Classification 
+  - Number of those with diabetes = 35,346 , Proportion (Diabetes) = 14 %
+  - Imbalanced class -> Down sampling was applied and now (35,346 each)
+
+
+```{r, missing values check}
+missing <- map(df, ~sum(is.na(.)))
+
+missing <- tibble(variable = names(df), missing = missing) %>%
+  filter(missing > 0) %>%
+  arrange(desc(missing)) 
+
+#print("there are no missing values across the dataset")
+```
+
+
+```{r, correct data types}
+df <- df |>
+  mutate(HighBP = ifelse(HighBP == 1, "High BP", "No High BP"),
+         CholCheck = ifelse(CholCheck == 1, "Chol Check in 5 yrs", "No Chol Check in 5 yrs"),
+         HighChol = ifelse(HighChol == 1, "High Chol", "No High Chol"),
+         Smoker = ifelse(Smoker == 1, "Smoker", "Non-Smoker"),
+         Stroke = ifelse(Stroke == 1, "Stroke", "No Stroke"),
+         HeartDiseaseorAttack = ifelse(HeartDiseaseorAttack == 1, "Heart Disease", "No Heart Disease"),
+         PhysActivity = ifelse(PhysActivity == 1, "Physically Active", "Not Physically Active"),
+         Fruits = ifelse(Fruits == 1, "Fruits", "No Fruits"),
+         Veggies = ifelse(Veggies == 1, "Veggies", "No Veggies"),
+         HvyAlcoholConsump = ifelse(HvyAlcoholConsump == 1, "Heavy Alcohol Consumption", "No Heavy Alcohol Consumption"),
+         AnyHealthcare = ifelse(AnyHealthcare == 1, "Have Healthcare Insurance", "No Healthcare Insurance"),
+         NoDocbcCost = ifelse(NoDocbcCost == 1, "No Doc bc Cost", "Afford Healthcare"),
+         GenHlth = ifelse(GenHlth == 1, "Excellent",
+                          ifelse(GenHlth == 2, "Very Good",
+                                 ifelse(GenHlth == 3, "Good",
+                                        ifelse(GenHlth == 4, "Fair", "Poor")))),
+         DiffWalk = ifelse(DiffWalk == 1, "Difficulty Walking", "No Difficulty Walking"),
+         Sex = ifelse(Sex ==1, "Male", "Female"),
+         Education = ifelse(Education == 1, "Never attended school",
+                            ifelse(Education == 2, "Elementary school",
+                                   ifelse(Education == 3, "High school",
+                                          ifelse(Education == 4, "High school graduate",
+                                                 ifelse(Education == 5, "Some college or technical school",
+                                                        "College graduate"))))),
+         Income = ifelse(Income == 1, "Less than 10000",
+                         ifelse(Income == 2, "10000-14999",
+                                ifelse(Income == 3, "15000-19999",
+                                       ifelse(Income == 4, "20000-24999",
+                                              ifelse(Income == 5, "25000-34999",
+                                                     ifelse(Income == 6, "35000-49999",
+                                                            ifelse(Income == 7, "50000-74999", "75000 or more"))))))),
+         Diabetes_binary = ifelse(Diabetes_binary == 1, "Diabetes", "No Diabetes"))
+
+df <- df |> 
+  mutate(across(where(is.character), as.factor))
+
+df$Age <- as.factor(df$Age)
+```
+
+
+```{r, Down sample the data due to class-imbalance}
+downsampled_data <- downSample(x = df |> select(- Diabetes_binary),
+                               y = df$Diabetes_binary)
+
+df <- downsampled_data
+```
+
+### Summary table (Balanced Class) and variable selection
+
+#### General Summary Table
+```{r, cache=TRUE}
+df |>
+  tbl_summary(
+        statistic = list(all_continuous() ~ "{mean} ({sd})",
+                         all_categorical() ~ "{n} ({p}%)"),
+        digits = all_continuous() ~ 1,
+        missing_text = "(Missing)"
+    ) |>
+  modify_header(label = "**Variable**") %>%
+  bold_labels()
+```
+
+### Summary Table by Diabetes Status
+
+#### Summary Table by Diabetes Status
+```{r, cache=TRUE}
+df |>
+  tbl_summary(by = Class,
+        statistic = list(all_continuous() ~ "{mean} ({sd})",
+                         all_categorical() ~ "{n} ({p}%)"),
+        digits = all_continuous() ~ 1,
+        missing_text = "(Missing)"
+    ) |>
+  add_p() %>%
+  modify_header(label = "**Variable**") %>%
+  bold_labels()
+```
+
+### Correlation plot between numeric covariates
+```{r}
+library(corrplot)
+
+corrplot::corrplot(cor(df %>% 
+                         select(where(is.numeric))), method = "number", type = "upper", 
+                   tl.col = "black", cex.lab = 0.7, number.cex = 0.6)
+```
+
+# **Model Building**
+
+## {.tabset .tabset-fade .tabset-pills}
+
+### Prepare the data for model building
+
+- Split the data into training (count = 49,486; proportion = 70 %) and testing (count = 21,206; proportion = 30 %) sets.
+
+```{r, Split the data into training and testing sets}
+
+df$Class <- as.factor(df$Class)
+levels(df$Class) <- c("pos", "neg")
+
+set.seed(123)
+trainIndex <- createDataPartition(df$Class, p = .7, 
+                                  list = FALSE, 
+                                  times = 1)
+
+df_train <- df[ trainIndex,]
+df_test  <- df[-trainIndex,]
+# 
+X_train <- df_train %>% dplyr::select(-Class)
+y_train <- df_train$Class
+X_test <- df_test %>% dplyr::select(-Class)
+y_test <- df_test$Class
+
+binary_cols <- c("HighBP", "CholCheck", "HighChol", "Smoker", "Stroke", 
+                 "HeartDiseaseorAttack", "PhysActivity", "Fruits", "Veggies", 
+                 "HvyAlcoholConsump", "AnyHealthcare", "NoDocbcCost", "DiffWalk",
+                 "Sex") # 14
+
+ordinal_cols <- c("GenHlth", "Education", "Income", "Age") # 4
+
+num_cols <- c("BMI", "MentHlth", "PhysHlth") # 3
+```
+
+
+```{r, Prep data for machine learning models}
+# prep binary columns
+
+# One-hot encode categorical variables
+dummy_vars <- dummyVars("~ .", data = X_train[binary_cols], 
+                        fullRank = FALSE, sep = ": ")
+X_train_binary_encoded <- predict(dummy_vars, newdata = X_train[, binary_cols])
+X_train_binary <- as.data.frame(X_train_binary_encoded) |> # Convert matrix to data frame
+  select(-`HighBP: No High BP`, -`CholCheck: No Chol Check in 5 yrs`, 
+         -`HighChol: No High Chol`, -`Smoker: Smoker`, -`Stroke: No Stroke`, 
+         -`HeartDiseaseorAttack: No Heart Disease`, -`PhysActivity: Not Physically Active`,
+         -`Fruits: No Fruits`, -`Veggies: No Veggies`, -`HvyAlcoholConsump: No Heavy Alcohol Consumption`, 
+         -`AnyHealthcare: No Healthcare Insurance`, -`NoDocbcCost: No Doc bc Cost`, 
+         -`DiffWalk: No Difficulty Walking`, - `Sex: Female`)
+
+# Apply the same transformation to X_test (if you have a test set)
+X_test_binary_encoded <- predict(dummy_vars, newdata = X_test[ ,binary_cols])
+X_test_binary <- as.data.frame(X_test_binary_encoded) |>
+  select(-`HighBP: No High BP`, -`CholCheck: No Chol Check in 5 yrs`, 
+         -`HighChol: No High Chol`, -`Smoker: Smoker`, -`Stroke: No Stroke`, 
+         -`HeartDiseaseorAttack: No Heart Disease`, -`PhysActivity: Not Physically Active`,
+         -`Fruits: No Fruits`, -`Veggies: No Veggies`, -`HvyAlcoholConsump: No Heavy Alcohol Consumption`, 
+         -`AnyHealthcare: No Healthcare Insurance`, -`NoDocbcCost: No Doc bc Cost`, 
+         -`DiffWalk: No Difficulty Walking`, - `Sex: Female`)
+```
+
+- Convert categorical covariates to dummy variables and ordinal covariates to numeric.
+
+```{r}
+# For ordinal variables
+X_train_ordinal <- X_train[ordinal_cols] |> 
+  mutate(GenHlth = fct_relevel(GenHlth, "Poor", "Fair", "Good", "Very Good", "Excellent"),
+         GenHlth = as.numeric(Education),
+         Income = fct_relevel(Income, "Less than 10000", "10000-14999", 
+                              "15000-19999", "20000-24999", "25000-34999", 
+                              "35000-49999", "50000-74999", "75000 or more"),
+         Income = as.numeric(Income),
+         Age = fct_relevel(Age, "1", "2", "3", "4", "5", "6", "7", "8", "9", "10",
+                           "11", "12", "13"),
+         Age = as.numeric(Age),
+         Education = fct_relevel(Education, "Never attended school", "Elementary school",
+                                 "High school", "High school graduate", 
+                                 "Some college or technical school", "College graduate"),
+         Education = as.numeric(Education))
+
+X_test_ordinal <- X_test[ordinal_cols] |> 
+  mutate(GenHlth = fct_relevel(GenHlth, "Poor", "Fair", "Good", "Very Good", "Excellent"),
+         GenHlth = as.numeric(Education),
+         Income = fct_relevel(Income, "Less than 10000", "10000-14999", 
+                              "15000-19999", "20000-24999", "25000-34999", 
+                              "35000-49999", "50000-74999", "75000 or more"),
+         Income = as.numeric(Income),
+         Age = fct_relevel(Age, "1", "2", "3", "4", "5", "6", "7", "8", "9", "10",
+                           "11", "12", "13"),
+         Age = as.numeric(Age),
+         Education = fct_relevel(Education, "Never attended school", "Elementary school",
+                                 "High school", "High school graduate", 
+                                 "Some college or technical school", "College graduate"),
+         Education = as.numeric(Education))
+
+X_train <- X_train_binary |>
+  bind_cols(X_train_ordinal) |>
+  bind_cols(X_train[num_cols])
+
+X_test <- X_test_binary |>
+  bind_cols(X_test_ordinal) |>
+  bind_cols(X_test[num_cols])
+
+ctrl <- trainControl(method = "repeatedcv", #resampling method
+                     number = 10, #number of folds
+                     summaryFunction = twoClassSummary,
+                     classProbs = TRUE)
+```
+
+
+```{r, Logistic Regression}
+set.seed(123)
+model.glm <- train(x = X_train,
+             y = y_train,
+             method = "glm",
+             metric = "ROC",
+             trControl = ctrl)
+final.glm <- model.glm$finalModel
+```
+
+
+```{r, K-nearest Neighbors (KNN)}
+set.seed(1)
+
+# Define the tuning grid for k
+#tune_grid <- expand.grid(k = c(3))  # Test odd values of k between 3 and 15
+  # Set k = 3 specifically, or define multiple values for tuning
+
+# Train the k-NN model
+# model.knn <- train(
+#   x = X_train,
+#   y = y_train,
+#   method = "knn",
+#   preProcess = c("center", "scale"),  # Preprocess the data (scaling and centering)
+#   #tuneGrid = tune_grid,              # Use the tuning grid to specify `k`
+#   metric = "ROC",                    # Use ROC as the evaluation metric
+#   trControl = ctrl                   # Control object for cross-validation
+# )
+
+#saveRDS(model.knn, "model_knn_cv.rds")
+model.knn <- read_rds("model_knn_cv.rds")
+
+```
+
+```{r, LDA}
+set.seed(1)
+model.lda <- train(x = X_train,
+                   y = y_train,
+                   method = "lda",
+                   metric = "ROC",
+                   trControl = ctrl)
+```
+
+
+```{r, QLDA}
+set.seed(1)
+model.qda <- train(x = X_train,
+                   y = y_train,
+                   method = "qda",
+                   metric = "ROC",
+                   trControl = ctrl)
+```
+ 
+
+```{r, Random Forest}
+# Try more if possible
+# rf.grid <- expand.grid(mtry = 1:6,
+#                        splitrule = "gini",
+#                        min.node.size = 1:6)
+# set.seed(1)
+# model.rf <- train(x = X_train,
+#                   y = y_train,
+#                   method = "ranger",
+#                   #tuneGrid = rf.grid,
+#                   metric = "ROC",
+#                   trControl = ctrl)
+
+#saveRDS(model.rf, "model_rf_cv.rds")
+model.rf <- read_rds("model_rf_cv.rds")
+```
+
+```{r, AdaBoost}
+# gbmA.grid <- expand.grid(n.trees = c(2000,3000,4000),
+#                         interaction.depth = 1:6,
+#                         shrinkage = c(0.001,0.003,0.005),
+#                         n.minobsinnode = 1)
+# set.seed(1)
+# # Adaboost loss function
+# model.gbmA <- train(x = X_train,
+#                     y = y_train, 
+#                     #tuneGrid = gbmA.grid,
+#                     trControl = ctrl,
+#                     method = "gbm",
+#                     distribution = "adaboost",
+#                     metric = "ROC",
+#                     verbose = FALSE)
+
+#saveRDS(model.gbmA, "model_gbmA_cv.rds")
+model.gbmA <- read_rds("model_gbmA_cv.rds")
+
+```
+
+```{r, SVM}
+# set.seed(2)
+# model.svm <- train(x = X_train,
+#                    y = y_train,
+#                    method = "svmRadial",
+#                    metric = "ROC",
+#                    trControl = ctrl,
+#                    preProcess = c("center", "scale"))
+```
+
+
+```{r, Elastic Net}
+set.seed(2313)
+model.enet <- train(X_test, y_test,
+                  method = "glmnet",
+                  #tuneGrid = expand.grid(alpha = seq(0, 1, length = 5), 
+                                         #lambda = exp(seq(-5, 1, length=100))),
+                  
+                  trControl = ctrl)
+#ggplot(model.enet,highlight=T)
+# plot(enet.fit, xTrans = function(x) log(x))
+
+#model.enet$bestTune
+
+# coefficient of the final model
+#coef(model.enet$finalModel,model.enet$bestTune$lambda)
+```
+
+- List of algorithms used in the model building process:
+  
+  - Logistic Regression
+  - K-nearest Neighbors (KNN)
+  - Linear Discriminant Analysis (LDA)
+  - Quadratic Discriminant Analysis (QDA)
+  - Random Forest
+  - AdaBoost
+  - Elastic Net
+
+
+### Cross-validation models' performance
+
+```{r, message=FALSE, warning=FALSE}
+res <- resamples(list(GLM = model.glm, 
+                      KNN = model.knn,
+                      LDA = model.lda,
+                      QDA = model.qda,
+                      RF = model.rf,
+                      GBM_A = model.gbmA,
+                      #SVM = model.svm,
+                      ENET = model.enet))
+#summary(res)
+```
+
+
+#### Boxplot of the models' performance
+
+```{r, fig.align='center' , fig.width=10, fig.height=6}
+theme1 <- trellis.par.get()
+theme1$plot.symbol$col = rgb(.2, .2, .2, .4)
+theme1$plot.symbol$pch = 16
+theme1$plot.line$col = rgb(1, 0, 0, .7)
+theme1$plot.line$lwd <- 2
+trellis.par.set(theme1)
+bwplot(res, layout = c(3, 1))
+```
+
+#### ROC boxplots
+```{r, fig.align='center' , fig.width=10, fig.height=6}
+bwplot(res, metric = "ROC")
+```
+
+#### ROC curves
+
+```{r message=FALSE, warning=FALSE, fig.align='center' , fig.width=10, fig.height=6}
+# use test data to evaluate the fitted model
+
+glm.pred <- predict(model.glm, newdata = X_train, type = "prob")[,1]
+knn.pred <- predict(model.knn, newdata = X_train, type = "prob")[,1]
+lda.pred <- predict(model.lda, newdata = X_train, type = "prob")[,1]
+qda.pred <- predict(model.qda, newdata = X_train, type = "prob")[,1]
+rf.pred <- predict(model.rf, newdata = X_train, type = "prob")[,1]
+gbmA.pred <- predict(model.gbmA, newdata = X_train, type = "prob")[,1]
+#svm.pred <- predict(model.svm, newdata = X_train, type = "prob")[,2]
+enet.pred <- predict(model.enet, newdata = X_train, type = "prob")[,1]
+
+roc.glm <- roc(y_train, glm.pred)
+roc.knn <- roc(y_train, knn.pred)
+roc.lda <- roc(y_train, lda.pred)
+roc.qda <- roc(y_train, qda.pred)
+roc.rf <- roc(y_train, rf.pred)
+roc.gbmA <- roc(y_train, gbmA.pred)
+#roc.svm <- roc(y_train, svm.pred)
+roc.enet <- roc(y_train, enet.pred)
+
+
+auc <- c(roc.glm$auc[1], roc.knn$auc[1], roc.lda$auc[1],
+         roc.qda$auc[1], roc.rf$auc[1], roc.gbmA$auc[1],
+         #roc.svm$auc[1], 
+         roc.enet$auc[1])
+
+plot(roc.glm, col = 1, legacy.axes = TRUE, lwd = 1, main = "ROC -- Methods Comparison on The Training Set")
+plot(roc.knn, col = 2, add = TRUE, lwd = 1)
+plot(roc.lda, col = 3, add = TRUE, lwd = 1)
+plot(roc.qda, col = 4, add = TRUE, lwd = 1)
+plot(roc.rf, col = 5, add = TRUE, lwd = 1)
+plot(roc.gbmA, col = 6, add = TRUE, lwd = 1)
+#plot(roc.svm, col = 9, add = TRUE, lwd = 1)
+plot(roc.enet, col = 7, add = TRUE, lwd = 1)
+
+modelNames <- c("glm","knn", "lda", "qda", "rf", "gbmA", "enet")
+legend("bottomright", legend = paste0(modelNames, ": ", round(auc,3)),
+       col = 1:7, lwd = 2)
+```
+
+# **Model fine-tuning and final evaluation**
+
+In this stage, will pick the best 3 models and will fine-tune them to get the best hyper parameters.
+
+```{r, Random Forest fine-tuning}
+rf.grid <- expand.grid(
+  mtry = seq(3, 6, 1),
+  splitrule = "gini",
+  min.node.size = c(5, 10) # Add ntree to the grid
+)
+
+
+# model.rf.finetuned <- train(
+#   x = X_train,
+#   y = y_train,
+#   method = "ranger",
+#   tuneGrid = rf.grid,
+#   metric = "ROC",
+#   trControl = ctrl,
+#   importance = 'impurity'  # Enable Gini-based importance
+# )
+
+
+#saveRDS(model.rf.finetuned, "model.rf.tuned.rds")
+model.rf.tuned <- read_rds("model.rf.tuned.rds")
+
+```
+
+
+```{r, GBM_A fine-tuning}
+# tuning my ada boost model
+gbmA.grid <- expand.grid(
+  n.trees = c(500, 700, 1000),
+  interaction.depth = c(1, 2, 3),
+  shrinkage = c(0.001, 0.003, 0.005),
+  n.minobsinnode = c(5, 10, 15)
+)
+# 
+# model.gbmA.tuned <- train(x = X_train,
+#                     y = y_train,
+#                     method = "gbm",
+#                     distribution = "adaboost",
+#                     tuneGrid = gbmA.grid,
+#                     metric = "ROC",
+#                     trControl = ctrl)
+
+#saveRDS(model.gbmA.tuned, "model.gbmA.tuned.rds")
+model.gbmA.tuned <- read_rds("model.gbmA.tuned.rds")
+```
+
+
+### Training set performance
+
+```{r message=FALSE, warning=FALSE}
+# use test data to evaluate the fitted model
+
+glm.pred <- predict(final.glm, newdata = X_train, type = "response")
+rf.pred <- predict(model.rf.tuned, newdata = X_train, type = "prob")[,1]
+gbmA.pred <- predict(model.gbmA.tuned, newdata = X_train, type = "prob")[,1]
+
+roc.glm <- roc(y_train, glm.pred)
+roc.rf <- roc(y_train, rf.pred)
+roc.gbmA <- roc(y_train, gbmA.pred)
+
+auc <- c(roc.glm$auc[1], roc.rf$auc[1], roc.gbmA$auc[1])
+
+plot(roc.glm, col = 1, legacy.axes = TRUE, lwd = 1, main = "ROC -- Methods Comparison on The Training Set")
+plot(roc.rf, col = 2, add = TRUE, lwd = 1)
+plot(roc.gbmA, col = 3, add = TRUE, lwd = 1)
+
+modelNames <- c("glm", "rf","gbmA")
+legend("bottomright", legend = paste0(modelNames, ": ", round(auc,3)),
+       col = 1:3, lwd = 2)
+```
+
+
+### Testing set performance
+Now let's look at the test set performance.
+
+```{r message=FALSE, warning=FALSE}
+# use test data to evaluate the fitted model
+
+glm.pred <- predict(final.glm, newdata = X_test, type = "response")
+rf.pred <- predict(model.rf.tuned, newdata = X_test, type = "prob")[,1]
+gbmA.pred <- predict(model.gbmA.tuned, newdata = X_test, type = "prob")[,1]
+
+roc.glm <- roc(y_test, glm.pred)
+roc.rf <- roc(y_test, rf.pred)
+roc.gbmA <- roc(y_test, gbmA.pred)
+
+auc <- c(roc.glm$auc[1], roc.rf$auc[1], roc.gbmA$auc[1])
+
+plot(roc.glm, col = 1, legacy.axes = TRUE, lwd = 1, main = "ROC -- Methods Comparison on The Testing Set")
+plot(roc.rf, col = 2, add = TRUE, lwd = 1)
+plot(roc.gbmA, col = 3, add = TRUE, lwd = 1)
+
+modelNames <- c("glm", "rf","gbmA")
+legend("bottomright", legend = paste0(modelNames, ": ", round(auc,3)),
+       col = 1:3, lwd = 2)
+```
+
+
+# **Best model interpretation**
+
+## {.tabset .tabset-fade .tabset-pills}
+
+### Variable importance using Random Forest
+```{r, fig.align='center' , fig.width=10, fig.height=6}
+library(ggplot2)
+
+# Extract variable importance
+importance_rf <- varImp(model.rf.tuned)
+importance_df <- as.data.frame(importance_rf$importance)
+importance_df$Feature <- rownames(importance_df)
+importance_df <- importance_df[order(importance_df$Overall, decreasing = TRUE), ]  # Sort by importance
+
+# Create a ggplot bar chart
+ggplot(importance_df, aes(x = reorder(Feature, Overall), y = Overall)) +
+  geom_bar(stat = "identity", fill = "steelblue") +
+  coord_flip() +
+  labs(
+    title = "Variable Importance",
+    x = "Features",
+    y = "Importance Score"
+  ) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(hjust = 0.5, size = 16, face = "bold"),
+    axis.title = element_text(size = 14),
+    axis.text = element_text(size = 12)
+  )
+
+```
+
+### Odds Ratio
+```{r}
+library(broom)
+library(glue)
+# Extract the coefficients from the final model
+model.glm$finalModel |> 
+  tidy(conf.int = T) |> 
+  filter(term != "(Intercept)",
+         p.value <=0.05) |> 
+  mutate(odds_ratio = exp(estimate),
+         `1/odds_ratio` = 1/odds_ratio) |>
+  mutate(across(where(is.numeric), ~ round(., 3))) |>
+  mutate(`estimate (conf.low, conf.high)`= glue::glue('{estimate} ({conf.low}, {conf.high})')) |>
+  select(term, `estimate (conf.low, conf.high)`, odds_ratio, `1/odds_ratio`) |>
+  DT::datatable(rownames = FALSE, options = list(pageLength = 10))
+```
+
+
+```{css}
+    .chart-shim {
+      overflow: auto;
+    }
+    
+/* Control the overall font size for the body */
+body {
+    font-size: 22px; /* Adjust overall font size */
+    line-height: 1.6; /* Adjust line spacing for better readability */
+}
+
+/* Control font size for headings */
+h1 {
+    font-size: 28px; /* Font size for main headings */
+}
+h2 {
+    font-size: 26px; /* Font size for subheadings */
+}
+h3 {
+    font-size: 24px;
+}
+
+/* Control font size for paragraphs */
+p {
+    font-size: 16px; /* Adjust paragraph font size */
+}
+
+/* Control font size for code blocks */
+pre, code {
+    font-size: 14px; /* Adjust font size for inline and block code */
+    font-family: "Courier New", Courier, monospace; /* Optional: set font family for code */
+}
+
+/* Control font size for lists */
+ul, ol {
+    font-size: 16px;
+}
+
+/* Control font size for block quotes */
+blockquote {
+    font-size: 18px;
+    font-style: italic;
+}
+
+```
